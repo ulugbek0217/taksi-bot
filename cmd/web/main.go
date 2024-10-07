@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -45,15 +46,21 @@ func main() {
 		bot.WithMessageTextHandler("🏠 Bosh sahifa", bot.MatchTypeExact, app.Start),
 		bot.WithMessageTextHandler("/getcount", bot.MatchTypeExact, app.BotUsersQuantity),
 		bot.WithMessageTextHandler("📍", bot.MatchTypePrefix, app.Direction),
+		bot.WithMessageTextHandler("📦Pochta bor", bot.MatchTypeExact, app.Package),
 		bot.WithDefaultHandler(app.Order),
 	}
 
-	b, err := bot.New(os.Getenv("TOKEN"), opts...)
+    bot_token := os.Getenv("TOKEN")
+	b, err := bot.New(bot_token, opts...)
 	if err != nil {
 		fmt.Printf("couldn't create bot instance: %v", err)
 	}
 
 	fmt.Println("Starting the bot ...")
-
+    resp, err := http.Get(fmt.Sprintf("https://api.telegram.org/bot%s/deleteWebhook?drop_pending_updates=1", bot_token))
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer resp.Body.Close()
 	b.Start(ctx)
 }
