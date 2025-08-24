@@ -37,3 +37,37 @@ func LoadEnv(path string) error {
 	err := godotenv.Overload(path)
 	return err
 }
+
+// GetSetting retrieves a setting value from the database
+func GetSetting(ctx context.Context, db *pgx.Conn, key string) (string, error) {
+	var value string
+	err := db.QueryRow(ctx, "SELECT value FROM bot_settings WHERE key = $1", key).Scan(&value)
+	return value, err
+}
+
+// SetSetting saves or updates a setting in the database
+func SetSetting(ctx context.Context, db *pgx.Conn, key, value string) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO bot_settings (key, value) 
+		VALUES ($1, $2) 
+		ON CONFLICT (key) 
+		DO UPDATE SET 
+			value = $2, 
+			updated_at = CURRENT_TIMESTAMP
+	`, key, value)
+	return err
+}
+
+// InitializeSettings ensures default settings exist in the database
+func InitializeSettings(ctx context.Context, db *pgx.Conn) error {
+	// Check if send_to_group setting exists, if not create it
+	_, err := GetSetting(ctx, db, "send_to_group")
+	if err != nil {
+		// Setting doesn't exist, create it with default value
+		err = SetSetting(ctx, db, "send_to_group", "false")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

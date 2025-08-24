@@ -12,9 +12,11 @@ import (
 )
 
 type Handlers struct {
-	DB    *pgx.Conn
-	Admin int64
-	cache Cache
+	DB        *pgx.Conn
+	Admin     int64
+	GroupID   int64
+	SendToGroup bool  // Toggle flag: true = send to group, false = send to admin
+	cache     Cache
 }
 
 type Cache struct {
@@ -86,57 +88,107 @@ func (h *Handlers) Start(ctx context.Context, b *bot.Bot, update *models.Update)
 	}
 }
 
-// func (h Handlers) Passenger(ctx context.Context, b *bot.Bot, update *models.Update) {
-// 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-// 		ChatID: update.Message.Chat.ID,
-// 		Text:   fmt.Sprintf("Sizga TAXI xizmati zarur bo'lsa quyidagi raqamlarga murojaat qiling:\n\n%s\n%s\n\nYoki bot orqali buyurtma qilish uchun quyidagi yo'nalishlardan birini tanlang:", data.PhoneNumbers[0], data.PhoneNumbers[1]),
-// 		ReplyMarkup: models.ReplyKeyboardMarkup{
-// 			Keyboard: [][]models.KeyboardButton{
-// 				{
-// 					{
-// 						Text: data.Directions[0],
-// 					},
-// 				},
-// 				{
-// 					{
-// 						Text: data.Directions[1],
-// 					},
-// 				},
-// 				{
-// 					{
-// 						Text: data.Directions[2],
-// 					},
-// 				},
-// 				{
-// 					{
-// 						Text: data.Directions[3],
-// 					},
-// 				},
-// 				{
-// 					{
-// 						Text: data.Directions[4],
-// 					},
-// 				},
-// 				{
-// 					{
-// 						Text: data.Directions[5],
-// 					},
-// 				},
-// 				{
-// 					{
-// 						Text: "🏠 Bosh sahifa",
-// 					},
-// 				},
-// 			},
-// 			ResizeKeyboard: true,
-// 		},
-// 	})
+// ToggleToGroup toggles message sending to group
+func (h *Handlers) ToggleToGroup(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil || update.Message.From.ID != h.Admin {
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "❌ Bu buyruq faqat admin uchun!",
+		})
+		if err != nil {
+			fmt.Printf("error on unauthorized toggle attempt: %v\n", err)
+		}
+		return
+	}
 
-// 	if err != nil {
-// 		fmt.Printf("error on func start on send message: %v\n", err)
-// 		return
-// 	}
-// }
+	// Update memory
+	h.SendToGroup = true
+	
+	// Save to database
+	err := hp.SetSetting(ctx, h.DB, "send_to_group", "true")
+	if err != nil {
+		fmt.Printf("error saving toggle setting to database: %v\n", err)
+		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "❌ Xatolik: Ma'lumotlar bazasiga saqlab bo'lmadi.",
+		})
+		return
+	}
+	
+	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   "✅ Buyurtmalar endi guruhga yuboriladi.",
+	})
+	if err != nil {
+		fmt.Printf("error on toggle to group confirmation: %v\n", err)
+	}
+
+	fmt.Printf("Admin toggled message sending to GROUP (ID: %d) - SAVED TO DB\n", h.GroupID)
+}
+
+// ToggleToPM toggles message sending to admin PM
+func (h *Handlers) ToggleToPM(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil || update.Message.From.ID != h.Admin {
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "❌ Bu buyruq faqat admin uchun!",
+		})
+		if err != nil {
+			fmt.Printf("error on unauthorized toggle attempt: %v\n", err)
+		}
+		return
+	}
+
+	// Update memory
+	h.SendToGroup = false
+	
+	// Save to database
+	err := hp.SetSetting(ctx, h.DB, "send_to_group", "false")
+	if err != nil {
+		fmt.Printf("error saving toggle setting to database: %v\n", err)
+		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "❌ Xatolik: Ma'lumotlar bazasiga saqlab bo'lmadi.",
+		})
+		return
+	}
+	
+	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   "✅ Buyurtmalar endi shaxsiy xabarga yuboriladi.",
+	})
+	if err != nil {
+		fmt.Printf("error on toggle to PM confirmation: %v\n", err)
+	}
+
+	fmt.Printf("Admin toggled message sending to PRIVATE MESSAGES (Admin ID: %d) - SAVED TO DB\n", h.Admin)
+}
+
+// GetToggleStatus shows current toggle status (admin only)
+func (h *Handlers) GetToggleStatus(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil || update.Message.From.ID != h.Admin {
+		return
+	}
+
+	var status string
+	var destination string
+	
+	if h.SendToGroup {
+		status = "📢 Guruh"
+		destination = fmt.Sprintf("(ID: %d)", h.GroupID)
+	} else {
+		status = "👤 Shaxsiy xabar"
+		destination = fmt.Sprintf("(Admin ID: %d)", h.Admin)
+	}
+
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   fmt.Sprintf("📊 Joriy holat:\n\nBuyurtmalar yuborilayotgan joy: %s %s", status, destination),
+	})
+	if err != nil {
+		fmt.Printf("error on status check: %v\n", err)
+	}
+}
 
 // Direction handles the direction and asks for customers quantity or a package
 func (h *Handlers) Direction(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -241,20 +293,29 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 		infoMessage = fmt.Sprintf("////////////////////\n|| Yo'lovchi ||\n////////////////////\nYo'nalish: %s\nYo'lovchilar: %s\nBuyurtma beruvchi raqami: %s", h.cache.direction, h.cache.quantity, h.cache.phone)
 	}
 
+	// Determine where to send the message based on toggle
+	var targetChatID int64
+	if h.SendToGroup {
+		targetChatID = h.GroupID
+	} else {
+		targetChatID = h.Admin
+	}
+
 	h.cache = Cache{}
 
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: h.Admin,
+		ChatID: targetChatID,
 		Text:   infoMessage,
 	})
 	if err != nil {
-		fmt.Printf("error on func Order on sending message to admin: %v\n", err)
+		fmt.Printf("error on func Order on sending message to target (%d): %v\n", targetChatID, err)
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   "Buyurtmani amalga oshirishda xatolik yuz berdi.",
 		})
 		return
 	}
+	
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "Buyurtmangiz qabul qilindi. Siz bilan tez orada bog'lanamiz.",
@@ -274,10 +335,17 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 	if err != nil {
 		fmt.Printf("error on func Order on order received message: %v\n", err)
 	}
+
+	// Log where the message was sent
+	if h.SendToGroup {
+		fmt.Printf("Order sent to GROUP (ID: %d)\n", h.GroupID)
+	} else {
+		fmt.Printf("Order sent to ADMIN PM (ID: %d)\n", h.Admin)
+	}
 }
 
 // BotUsersQuantity sends to the chat the number of registered users
-func (h Handlers) BotUsersQuantity(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (h *Handlers) BotUsersQuantity(ctx context.Context, b *bot.Bot, update *models.Update) {
 	count, err := hp.CountUsers(ctx, h.DB)
 	if err != nil {
 		fmt.Printf("error on func BotUsersQuantity on counting users: %v\n", err)
