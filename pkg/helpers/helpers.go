@@ -71,3 +71,26 @@ func InitializeSettings(ctx context.Context, db *pgx.Conn) error {
 	}
 	return nil
 }
+
+// GetUserDisplayName returns a formatted display name for a user
+func GetUserDisplayName(firstName, lastName, username string) (string, string) {
+	var displayName string
+	var usernameStr string
+	
+	if firstName != "" {
+		displayName = firstName
+		if lastName != "" {
+			displayName += " " + lastName
+		}
+	} else {
+		displayName = "Noma'lum foydalanuvchi"
+	}
+	
+	if username != "" {
+		usernameStr = "@" + username
+	} else {
+		usernameStr = "Username yo'q"
+	}
+	
+	return displayName, usernameStr
+}

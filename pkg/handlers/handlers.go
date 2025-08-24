@@ -164,26 +164,81 @@ func (h *Handlers) ToggleToPM(ctx context.Context, b *bot.Bot, update *models.Up
 	fmt.Printf("Admin toggled message sending to PRIVATE MESSAGES (Admin ID: %d) - SAVED TO DB\n", h.Admin)
 }
 
-// GetToggleStatus shows current toggle status (admin only)
+// GetToggleStatus shows current toggle status with detailed info (admin only)
 func (h *Handlers) GetToggleStatus(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil || update.Message.From.ID != h.Admin {
 		return
 	}
 
-	var status string
-	var destination string
+	var statusMessage string
 	
 	if h.SendToGroup {
-		status = "📢 Guruh"
-		destination = fmt.Sprintf("(ID: %d)", h.GroupID)
+		// Get group info
+		groupInfo, err := b.GetChat(ctx, &bot.GetChatParams{ChatID: h.GroupID})
+		var groupName string
+		if err != nil {
+			groupName = "Guruh nomi olinmadi"
+			fmt.Printf("Error getting group info: %v\n", err)
+		} else {
+			if groupInfo.Title != "" {
+				groupName = groupInfo.Title
+			} else {
+				groupName = "Nomsiz guruh"
+			}
+		}
+		
+		statusMessage = fmt.Sprintf(`📊 JORIY HOLAT
+
+🎯 Buyurtmalar jo'natilayotgan joy:
+📢 GURUH
+
+📋 Guruh ma'lumotlari:
+• Nomi: %s
+• ID: %d
+• Turi: %s
+
+✅ Barcha yangi buyurtmalar ushbu guruhga yuboriladi.
+
+🔄 O'zgartirish uchun:
+• /pm_msg - Shaxsiy xabarga o'tkazish`, 
+			groupName, h.GroupID, groupInfo.Type)
+			
 	} else {
-		status = "👤 Shaxsiy xabar"
-		destination = fmt.Sprintf("(Admin ID: %d)", h.Admin)
+		// Get admin info
+		adminInfo, err := b.GetChat(ctx, &bot.GetChatParams{ChatID: h.Admin})
+		var adminName, adminUsername string
+		if err != nil {
+			adminName = "Admin nomi olinmadi"
+			adminUsername = "Username olinmadi"
+			fmt.Printf("Error getting admin info: %v\n", err)
+		} else {
+			adminName, adminUsername = hp.GetUserDisplayName(
+				adminInfo.FirstName, 
+				adminInfo.LastName, 
+				adminInfo.Username,
+			)
+		}
+		
+		statusMessage = fmt.Sprintf(`📊 JORIY HOLAT
+
+🎯 Buyurtmalar jo'natilayotgan joy:
+👤 SHAXSIY XABAR
+
+📋 Admin ma'lumotlari:
+• Ism: %s
+• Username: %s
+• ID: %d
+
+✅ Barcha yangi buyurtmalar shaxsiy xabarga yuboriladi.
+
+🔄 O'zgartirish uchun:
+• /group_msg - Guruhga o'tkazish`, 
+			adminName, adminUsername, h.Admin)
 	}
 
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   fmt.Sprintf("📊 Joriy holat:\n\nBuyurtmalar yuborilayotgan joy: %s %s", status, destination),
+		Text:   statusMessage,
 	})
 	if err != nil {
 		fmt.Printf("error on status check: %v\n", err)
@@ -286,11 +341,36 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 		h.cache.phone = update.Message.Text
 	}
 
+	// Get user info for better formatting
+	var userName string
+	
+	if update.Message.From.FirstName != "" {
+		userName = update.Message.From.FirstName
+		if update.Message.From.LastName != "" {
+			userName += " " + update.Message.From.LastName
+		}
+	} else {
+		userName = "Noma'lum"
+	}
+
 	var infoMessage string
 	if h.cache.isPackage {
-		infoMessage = fmt.Sprintf("////////////////\n|| Pochta ||\n////////////////\nYo'nalish: %s\nBuyurtma beruvchi raqami: %s", h.cache.direction, h.cache.phone)
+		infoMessage = fmt.Sprintf(`🚚 YANGI POCHTA BUYURTMASI
+
+📦 Xizmat turi: Pochta yetkazish
+📍 Yo'nalish: %s
+📞 Telefon raqami: %s
+👤 Buyurtmachi ismi: %s`, 
+			h.cache.direction, h.cache.phone, userName)
 	} else {
-		infoMessage = fmt.Sprintf("////////////////////\n|| Yo'lovchi ||\n////////////////////\nYo'nalish: %s\nYo'lovchilar: %s\nBuyurtma beruvchi raqami: %s", h.cache.direction, h.cache.quantity, h.cache.phone)
+		infoMessage = fmt.Sprintf(`🚖 YANGI TAXI BUYURTMASI
+
+🚗 Xizmat turi: Taxi (yo'lovchi)
+📍 Yo'nalish: %s
+👥 Yo'lovchilar soni: %s
+📞 Telefon raqami: %s
+👤 Buyurtmachi ismi: %s`, 
+			h.cache.direction, h.cache.quantity, h.cache.phone, userName)
 	}
 
 	// Determine where to send the message based on toggle
@@ -318,7 +398,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 	
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   "Buyurtmangiz qabul qilindi. Siz bilan tez orada bog'lanamiz.",
+		Text:   "✅ Buyurtmangiz qabul qilindi. Siz bilan tez orada bog'lanamiz.",
 		ReplyMarkup: models.ReplyKeyboardMarkup{
 			Keyboard: [][]models.KeyboardButton{
 				{
