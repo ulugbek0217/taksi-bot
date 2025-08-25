@@ -367,7 +367,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 📦 Xizmat turi: Pochta yetkazish
 📍 Yo'nalish: %s
 📞 Telefon raqami: %s
-👤 Buyurtmachi ismi: <a href='t.me/user?id=%d'>%s</a>`,
+👤 Buyurtmachi ismi: <a href='tg://user?id%d'>%s</a>`,
 			h.cache.direction, h.cache.phone, update.Message.From.ID, userName)
 	} else {
 		infoMessage = fmt.Sprintf(`🚖 YANGI TAXI BUYURTMASI
@@ -376,7 +376,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 📍 Yo'nalish: %s
 👥 Yo'lovchilar soni: %s
 📞 Telefon raqami: %s
-👤 Buyurtmachi ismi: <a href='t.me/user?id=%d'>%s</a>`,
+👤 Buyurtmachi ismi: <a href='tg://user?id%d'>%s</a>`,
 			h.cache.direction, h.cache.quantity, h.cache.phone, update.Message.From.ID, userName)
 	}
 
