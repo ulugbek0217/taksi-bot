@@ -12,11 +12,11 @@ import (
 )
 
 type Handlers struct {
-	DB        *pgx.Conn
-	Admin     int64
-	GroupID   int64
-	SendToGroup bool  // Toggle flag: true = send to group, false = send to admin
-	cache     Cache
+	DB          *pgx.Conn
+	Admin       int64
+	GroupID     int64
+	SendToGroup bool // Toggle flag: true = send to group, false = send to admin
+	cache       Cache
 }
 
 type Cache struct {
@@ -103,7 +103,7 @@ func (h *Handlers) ToggleToGroup(ctx context.Context, b *bot.Bot, update *models
 
 	// Update memory
 	h.SendToGroup = true
-	
+
 	// Save to database
 	err := hp.SetSetting(ctx, h.DB, "send_to_group", "true")
 	if err != nil {
@@ -114,7 +114,7 @@ func (h *Handlers) ToggleToGroup(ctx context.Context, b *bot.Bot, update *models
 		})
 		return
 	}
-	
+
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "✅ Buyurtmalar endi guruhga yuboriladi.",
@@ -141,7 +141,7 @@ func (h *Handlers) ToggleToPM(ctx context.Context, b *bot.Bot, update *models.Up
 
 	// Update memory
 	h.SendToGroup = false
-	
+
 	// Save to database
 	err := hp.SetSetting(ctx, h.DB, "send_to_group", "false")
 	if err != nil {
@@ -152,7 +152,7 @@ func (h *Handlers) ToggleToPM(ctx context.Context, b *bot.Bot, update *models.Up
 		})
 		return
 	}
-	
+
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "✅ Buyurtmalar endi shaxsiy xabarga yuboriladi.",
@@ -171,7 +171,7 @@ func (h *Handlers) GetToggleStatus(ctx context.Context, b *bot.Bot, update *mode
 	}
 
 	var statusMessage string
-	
+
 	if h.SendToGroup {
 		// Get group info
 		groupInfo, err := b.GetChat(ctx, &bot.GetChatParams{ChatID: h.GroupID})
@@ -186,7 +186,7 @@ func (h *Handlers) GetToggleStatus(ctx context.Context, b *bot.Bot, update *mode
 				groupName = "Nomsiz guruh"
 			}
 		}
-		
+
 		statusMessage = fmt.Sprintf(`📊 JORIY HOLAT
 
 🎯 Buyurtmalar jo'natilayotgan joy:
@@ -200,9 +200,9 @@ func (h *Handlers) GetToggleStatus(ctx context.Context, b *bot.Bot, update *mode
 ✅ Barcha yangi buyurtmalar ushbu guruhga yuboriladi.
 
 🔄 O'zgartirish uchun:
-• /pm_msg - Shaxsiy xabarga o'tkazish`, 
+• /pm_msg - Shaxsiy xabarga o'tkazish`,
 			groupName, h.GroupID, groupInfo.Type)
-			
+
 	} else {
 		// Get admin info
 		adminInfo, err := b.GetChat(ctx, &bot.GetChatParams{ChatID: h.Admin})
@@ -213,12 +213,12 @@ func (h *Handlers) GetToggleStatus(ctx context.Context, b *bot.Bot, update *mode
 			fmt.Printf("Error getting admin info: %v\n", err)
 		} else {
 			adminName, adminUsername = hp.GetUserDisplayName(
-				adminInfo.FirstName, 
-				adminInfo.LastName, 
+				adminInfo.FirstName,
+				adminInfo.LastName,
 				adminInfo.Username,
 			)
 		}
-		
+
 		statusMessage = fmt.Sprintf(`📊 JORIY HOLAT
 
 🎯 Buyurtmalar jo'natilayotgan joy:
@@ -232,7 +232,7 @@ func (h *Handlers) GetToggleStatus(ctx context.Context, b *bot.Bot, update *mode
 ✅ Barcha yangi buyurtmalar shaxsiy xabarga yuboriladi.
 
 🔄 O'zgartirish uchun:
-• /group_msg - Guruhga o'tkazish`, 
+• /group_msg - Guruhga o'tkazish`,
 			adminName, adminUsername, h.Admin)
 	}
 
@@ -323,6 +323,9 @@ func (h *Handlers) CustomersQuantity(ctx context.Context, b *bot.Bot, update *mo
 
 // Order commits the order
 func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message.Chat.Type == models.ChatTypeGroup {
+		return
+	}
 	if h.cache.status == "" {
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
@@ -343,7 +346,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 
 	// Get user info for better formatting
 	var userName string
-	
+
 	if update.Message.From.FirstName != "" {
 		userName = update.Message.From.FirstName
 		if update.Message.From.LastName != "" {
@@ -360,7 +363,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 📦 Xizmat turi: Pochta yetkazish
 📍 Yo'nalish: %s
 📞 Telefon raqami: %s
-👤 Buyurtmachi ismi: %s`, 
+👤 Buyurtmachi ismi: %s`,
 			h.cache.direction, h.cache.phone, userName)
 	} else {
 		infoMessage = fmt.Sprintf(`🚖 YANGI TAXI BUYURTMASI
@@ -369,7 +372,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 📍 Yo'nalish: %s
 👥 Yo'lovchilar soni: %s
 📞 Telefon raqami: %s
-👤 Buyurtmachi ismi: %s`, 
+👤 Buyurtmachi ismi: %s`,
 			h.cache.direction, h.cache.quantity, h.cache.phone, userName)
 	}
 
@@ -395,7 +398,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 		})
 		return
 	}
-	
+
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "✅ Buyurtmangiz qabul qilindi. Siz bilan tez orada bog'lanamiz.",
