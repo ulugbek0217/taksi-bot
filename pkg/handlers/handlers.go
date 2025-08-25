@@ -391,8 +391,9 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 	h.cache = Cache{}
 
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: targetChatID,
-		Text:   infoMessage,
+		ChatID:    targetChatID,
+		Text:      infoMessage,
+		ParseMode: models.ParseModeHTML,
 	})
 	if err != nil {
 		fmt.Printf("error on func Order on sending message to target (%d): %v\n", targetChatID, err)
