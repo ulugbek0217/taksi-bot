@@ -356,8 +356,9 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 	} else {
 		userName = "Noma'lum"
 	}
+	var proflink string
 	if update.Message.From.Username != "" {
-		userName += fmt.Sprintf("(@%s)", update.Message.From.Username)
+		proflink += fmt.Sprintf("(@%s)", update.Message.From.Username)
 	}
 
 	var infoMessage string
@@ -367,8 +368,8 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 📦 Xizmat turi: Pochta yetkazish
 📍 Yo'nalish: %s
 📞 Telefon raqami: %s
-👤 Buyurtmachi ismi: <a href='tg://user?id%d'>%s</a>`,
-			h.cache.direction, h.cache.phone, update.Message.From.ID, userName)
+👤 Buyurtmachi ismi: <a href='tg://user?id=%d'>%s</a> %s`,
+			h.cache.direction, h.cache.phone, update.Message.From.ID, userName, proflink)
 	} else {
 		infoMessage = fmt.Sprintf(`🚖 YANGI TAXI BUYURTMASI
 
@@ -376,8 +377,8 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 📍 Yo'nalish: %s
 👥 Yo'lovchilar soni: %s
 📞 Telefon raqami: %s
-👤 Buyurtmachi ismi: <a href='tg://user?id%d'>%s</a>`,
-			h.cache.direction, h.cache.quantity, h.cache.phone, update.Message.From.ID, userName)
+👤 Buyurtmachi ismi: <a href='tg://user?id=%d'>%s</a> %s`,
+			h.cache.direction, h.cache.quantity, h.cache.phone, update.Message.From.ID, userName, proflink)
 	}
 
 	// Determine where to send the message based on toggle
