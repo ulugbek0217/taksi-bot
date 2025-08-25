@@ -323,6 +323,7 @@ func (h *Handlers) CustomersQuantity(ctx context.Context, b *bot.Bot, update *mo
 
 // Order commits the order
 func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update) {
+	fmt.Printf("Chat type: %s\n", update.Message.Chat.Type)
 	if update.Message.Chat.Type == models.ChatTypeGroup {
 		return
 	}
