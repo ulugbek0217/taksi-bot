@@ -333,10 +333,10 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 		// 	Text:   "⚠️ Iltimos tugmalardan foydalaning.",
 		// })
 
-		if err != nil {
-			fmt.Printf("error on func Order on use keyboard message: %v\n", err)
-			return
-		}
+		// if err != nil {
+		// 	fmt.Printf("error on func Order on use keyboard message: %v\n", err)
+		// 	return
+		// }
 		return
 	} else if h.cache.status == "quantity" {
 		h.CustomersQuantity(ctx, b, update)
