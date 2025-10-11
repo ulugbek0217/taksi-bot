@@ -328,10 +328,10 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 		return
 	}
 	if h.cache.status == "" {
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: update.Message.Chat.ID,
-			Text:   "⚠️ Iltimos tugmalardan foydalaning.",
-		})
+		// _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		// 	ChatID: update.Message.Chat.ID,
+		// 	Text:   "⚠️ Iltimos tugmalardan foydalaning.",
+		// })
 
 		if err != nil {
 			fmt.Printf("error on func Order on use keyboard message: %v\n", err)
