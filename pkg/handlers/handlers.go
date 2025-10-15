@@ -3,16 +3,18 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	data "github.com/ulugbek0217/taksi-bot/misc"
 	hp "github.com/ulugbek0217/taksi-bot/pkg/helpers"
 )
 
 type Handlers struct {
-	DB          *pgx.Conn
+	DB          *pgxpool.Pool
 	Admin       int64
 	GroupID     int64
 	SendToGroup bool // Toggle flag: true = send to group, false = send to admin
@@ -25,6 +27,18 @@ type Cache struct {
 	direction string
 	quantity  string
 	isPackage bool
+}
+
+// SkipGroup is a middleware to skip group messages being answered
+func (Handlers) SkipGroup(next bot.HandlerFunc) bot.HandlerFunc {
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		if update.Message == nil ||
+			(update.Message.Chat.Type == models.ChatTypeGroup ||
+				update.Message.Chat.Type == models.ChatTypeSupergroup) {
+			return
+		}
+		next(ctx, b, update)
+	}
 }
 
 // Start is the entry point
@@ -112,6 +126,9 @@ func (h *Handlers) ToggleToGroup(ctx context.Context, b *bot.Bot, update *models
 			ChatID: update.Message.Chat.ID,
 			Text:   "❌ Xatolik: Ma'lumotlar bazasiga saqlab bo'lmadi.",
 		})
+		if err != nil {
+			fmt.Printf("err sending message: %v\n", err)
+		}
 		return
 	}
 
@@ -150,6 +167,7 @@ func (h *Handlers) ToggleToPM(ctx context.Context, b *bot.Bot, update *models.Up
 			ChatID: update.Message.Chat.ID,
 			Text:   "❌ Xatolik: Ma'lumotlar bazasiga saqlab bo'lmadi.",
 		})
+		fmt.Printf("err sending message: %v\n", err)
 		return
 	}
 
@@ -321,28 +339,35 @@ func (h *Handlers) CustomersQuantity(ctx context.Context, b *bot.Bot, update *mo
 
 }
 
-// Order commits the order
-func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update) {
-	fmt.Printf("Chat type: %s\n", update.Message.Chat.Type)
-	if update.Message.Chat.Type == models.ChatTypeGroup {
+// MainHandler commits the order
+func (h *Handlers) MainHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil {
 		return
 	}
-	if h.cache.status == "" {
-		// _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		// 	ChatID: update.Message.Chat.ID,
-		// 	Text:   "⚠️ Iltimos tugmalardan foydalaning.",
-		// })
+	// fmt.Printf("Chat type: %s\n", update.Message.Chat.Type)
+	// if update.Message.Chat.Type == models.ChatTypeGroup || update.Message.Chat.Type == models.ChatTypeSupergroup {
+	// 	return
+	// }
+	switch h.cache.status {
+	case "":
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "⚠️ Iltimos tugmalardan foydalaning.",
+		})
 
-		// if err != nil {
-		// 	fmt.Printf("error on func Order on use keyboard message: %v\n", err)
-		// 	return
-		// }
+		if err != nil {
+			fmt.Printf("error on func MainHandler on use keyboard message: %v\n", err)
+			return
+		}
 		return
-	} else if h.cache.status == "quantity" {
+	case "quantity":
 		h.CustomersQuantity(ctx, b, update)
 		return
-	} else if h.cache.status == "phone" {
+	case "phone":
 		h.cache.phone = update.Message.Text
+	case "bulkMessage":
+		h.BulkMessageSender(ctx, b, update)
+		return
 	}
 
 	// Get user info for better formatting
@@ -397,7 +422,7 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 		ParseMode: models.ParseModeHTML,
 	})
 	if err != nil {
-		fmt.Printf("error on func Order on sending message to target (%d): %v\n", targetChatID, err)
+		fmt.Printf("error on func MainHandler on sending message to target (%d): %v\n", targetChatID, err)
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   "Buyurtmani amalga oshirishda xatolik yuz berdi.",
@@ -422,14 +447,16 @@ func (h *Handlers) Order(ctx context.Context, b *bot.Bot, update *models.Update)
 	)
 
 	if err != nil {
-		fmt.Printf("error on func Order on order received message: %v\n", err)
+		fmt.Printf("error on func MainHandler on order received message: %v\n", err)
 	}
+
+	h.cache.status = ""
 
 	// Log where the message was sent
 	if h.SendToGroup {
-		fmt.Printf("Order sent to GROUP (ID: %d)\n", h.GroupID)
+		fmt.Printf("MainHandler sent to GROUP (ID: %d)\n", h.GroupID)
 	} else {
-		fmt.Printf("Order sent to ADMIN PM (ID: %d)\n", h.Admin)
+		fmt.Printf("MainHandler sent to ADMIN PM (ID: %d)\n", h.Admin)
 	}
 }
 
@@ -449,4 +476,122 @@ func (h *Handlers) BotUsersQuantity(ctx context.Context, b *bot.Bot, update *mod
 	if err != nil {
 		fmt.Printf("error on func BotUsersQuantity on send users quantity message\n")
 	}
+}
+
+// PrepareBulkMessage prepares users state to send bulk message
+func (h *Handlers) PrepareBulkMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil || update.Message.From.ID != h.Admin {
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "❌ Bu buyruq faqat admin uchun!",
+		})
+		if err != nil {
+			fmt.Printf("error on unauthorized toggle attempt: %v\n", err)
+		}
+		return
+	}
+
+	h.cache.status = "bulkMessage"
+
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   "Foydalanuvchilar uchun xabarni keltiring",
+		ReplyMarkup: models.ReplyKeyboardMarkup{
+			Keyboard: [][]models.KeyboardButton{
+				{
+					{
+						Text: "🏠 Bosh sahifa",
+					},
+				},
+			},
+			ResizeKeyboard: true,
+		},
+	})
+
+	if err != nil {
+		log.Printf("error on func PrepareBulkMessage on bulk send message: %v\n", err)
+	}
+}
+
+// BulkMessageSender sends given message to all users
+func (h *Handlers) BulkMessageSender(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil {
+		return
+	}
+
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   "Yuborish boshlandi",
+	})
+
+	if err != nil {
+		log.Printf("error sending message: %v\n", err)
+	}
+
+	// conn, err := pgxpool.New(context.Background(), os.Getenv("DB_PATH"))
+	// if err != nil {
+	// 	fmt.Fprintf(os.Stderr, "Unable to create connection pool: %v\n", err)
+	// 	os.Exit(1)
+	// }
+	// defer conn.Close()
+
+	rows, err := h.DB.Query(context.Background(), "SELECT user_id FROM users WHERE status = 0")
+	if err != nil {
+		fmt.Printf("conn error while getting users %v\n", err)
+	}
+	defer rows.Close()
+
+	var count int
+
+	for rows.Next() {
+		if count >= 30 {
+			count = 0
+			time.Sleep(time.Second * 1)
+		}
+		var id int64
+		err := rows.Scan(&id)
+		if err != nil {
+			fmt.Printf("error scanning a row: %v\n", err)
+		}
+
+		_, err = b.CopyMessage(ctx, &bot.CopyMessageParams{
+			ChatID:     id,
+			FromChatID: update.Message.From.ID, // fmt.Sprintf("%d", update.Message.Chat.ID)
+			MessageID:  update.Message.ID,
+		})
+		if err != nil {
+			//_, err := h.DB.Exec(ctx, "DELETE FROM users WHERE user_id = $1", id)
+			//if err != nil {
+			//	fmt.Printf("error deleting from conn: %v\n", err)
+			//}
+			log.Printf("error copying message: %v\n", err)
+		} else {
+			count++
+		}
+
+		_, err = h.DB.Exec(ctx, "UPDATE users SET status = 1 WHERE user_id = $1", id)
+		if err != nil {
+			fmt.Printf("error setting status: %v\n", err)
+		}
+
+	}
+
+	var sent_to int
+	res := h.DB.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE status = 1")
+	res.Scan(&sent_to)
+
+	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   fmt.Sprintf("Foydalanuvchilarga xabar yuborish tugatildi\nUmumiy hisobda %d ta foydalanuvchiga xabar yuborildi.", sent_to),
+	})
+	if err != nil {
+		fmt.Printf("error sending message: %v", err)
+	}
+
+	_, err = h.DB.Exec(ctx, "UPDATE users SET status = 0 WHERE status = 1")
+	if err != nil {
+		fmt.Printf("error setting status: %v\n", err)
+	}
+
+	h.cache.status = ""
 }

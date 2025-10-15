@@ -1,13 +1,14 @@
 package helpers
 
 import (
-	"github.com/jackc/pgx/v5"
 	"context"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
 // UserExists checks if the user exists
-func UserExists(db *pgx.Conn, tgId int64) bool {
+func UserExists(db *pgxpool.Pool, tgId int64) bool {
 	var exists = true
 	var data string
 	err := db.QueryRow(context.Background(), "SELECT 1 FROM users WHERE user_id = $1", tgId).Scan(&data)
@@ -18,15 +19,15 @@ func UserExists(db *pgx.Conn, tgId int64) bool {
 }
 
 // RegMin registers the users' id in to the database
-func RegMin(db *pgx.Conn, tgId int64) {
-	_, err := db.Exec(context.Background(), "insert into users (user_id) values ($1)",  tgId)
+func RegMin(db *pgxpool.Pool, tgId int64) {
+	_, err := db.Exec(context.Background(), "insert into users (user_id) values ($1)", tgId)
 	if err != nil {
 		panic(err)
 	}
 }
 
 // CountUsers returns the number of registered users
-func CountUsers(ctx context.Context, db *pgx.Conn) (uint, error) {
+func CountUsers(ctx context.Context, db *pgxpool.Pool) (uint, error) {
 	var count uint
 	err := db.QueryRow(ctx, "select count(*) from users").Scan(&count)
 	return count, err
@@ -39,14 +40,14 @@ func LoadEnv(path string) error {
 }
 
 // GetSetting retrieves a setting value from the database
-func GetSetting(ctx context.Context, db *pgx.Conn, key string) (string, error) {
+func GetSetting(ctx context.Context, db *pgxpool.Pool, key string) (string, error) {
 	var value string
 	err := db.QueryRow(ctx, "SELECT value FROM bot_settings WHERE key = $1", key).Scan(&value)
 	return value, err
 }
 
 // SetSetting saves or updates a setting in the database
-func SetSetting(ctx context.Context, db *pgx.Conn, key, value string) error {
+func SetSetting(ctx context.Context, db *pgxpool.Pool, key, value string) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO bot_settings (key, value) 
 		VALUES ($1, $2) 
@@ -59,7 +60,7 @@ func SetSetting(ctx context.Context, db *pgx.Conn, key, value string) error {
 }
 
 // InitializeSettings ensures default settings exist in the database
-func InitializeSettings(ctx context.Context, db *pgx.Conn) error {
+func InitializeSettings(ctx context.Context, db *pgxpool.Pool) error {
 	// Check if send_to_group setting exists, if not create it
 	_, err := GetSetting(ctx, db, "send_to_group")
 	if err != nil {
@@ -76,7 +77,7 @@ func InitializeSettings(ctx context.Context, db *pgx.Conn) error {
 func GetUserDisplayName(firstName, lastName, username string) (string, string) {
 	var displayName string
 	var usernameStr string
-	
+
 	if firstName != "" {
 		displayName = firstName
 		if lastName != "" {
@@ -85,12 +86,12 @@ func GetUserDisplayName(firstName, lastName, username string) (string, string) {
 	} else {
 		displayName = "Noma'lum foydalanuvchi"
 	}
-	
+
 	if username != "" {
 		usernameStr = "@" + username
 	} else {
 		usernameStr = "Username yo'q"
 	}
-	
+
 	return displayName, usernameStr
 }

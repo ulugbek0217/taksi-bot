@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	"github.com/go-telegram/bot"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ulugbek0217/taksi-bot/pkg/handlers"
 	hp "github.com/ulugbek0217/taksi-bot/pkg/helpers"
 )
@@ -17,15 +17,12 @@ import (
 func main() {
 	hp.LoadEnv("config/.env")
 
-	db, err := pgx.Connect(context.Background(), os.Getenv("DB_PATH"))
+	db, err := pgxpool.New(context.Background(), os.Getenv("DB_PATH"))
 	if err != nil {
 		panic(err)
 	}
-	defer func(db *pgx.Conn, ctx context.Context) {
-		err := db.Close(ctx)
-		if err != nil {
-			panic(err)
-		}
+	defer func(db *pgxpool.Pool, ctx context.Context) {
+		db.Close()
 	}(db, context.Background())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -64,15 +61,17 @@ func main() {
 	}
 
 	opts := []bot.Option{
+		bot.WithMiddlewares(app.SkipGroup),
 		bot.WithMessageTextHandler("/start", bot.MatchTypeExact, app.Start),
 		bot.WithMessageTextHandler("🏠 Bosh sahifa", bot.MatchTypeExact, app.Start),
 		bot.WithMessageTextHandler("/getcount", bot.MatchTypeExact, app.BotUsersQuantity),
 		bot.WithMessageTextHandler("/group_msg", bot.MatchTypeExact, app.ToggleToGroup),
 		bot.WithMessageTextHandler("/pm_msg", bot.MatchTypeExact, app.ToggleToPM),
 		bot.WithMessageTextHandler("/status", bot.MatchTypeExact, app.GetToggleStatus),
+		bot.WithMessageTextHandler("/xabar", bot.MatchTypeExact, app.PrepareBulkMessage),
 		bot.WithMessageTextHandler("📍", bot.MatchTypePrefix, app.Direction),
 		bot.WithMessageTextHandler("📦Pochta bor", bot.MatchTypeExact, app.Package),
-		bot.WithDefaultHandler(app.Order),
+		bot.WithDefaultHandler(app.MainHandler),
 	}
 
 	bot_token := os.Getenv("TOKEN")
@@ -89,7 +88,7 @@ func main() {
 	} else {
 		fmt.Println("Current mode: Send orders to Admin PM (loaded from DB)")
 	}
-	
+
 	resp, err := http.Get(fmt.Sprintf("https://api.telegram.org/bot%s/deleteWebhook?drop_pending_updates=1", bot_token))
 	if err != nil {
 		fmt.Println(err)
